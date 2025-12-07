@@ -2,7 +2,7 @@
 FROM node:18-alpine3.20 AS builder
 WORKDIR /app
 COPY package*.json ./
-RUN apk udpate && apk upgrade && apk add --no-cache python3 make g++
+RUN apk update && apk upgrade && apk add --no-cache python3 make g++
 RUN npm install
 COPY . .
 RUN npm run build
