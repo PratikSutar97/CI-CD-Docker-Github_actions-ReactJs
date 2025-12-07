@@ -1,0 +1,81 @@
+name: React CI/CD
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-test-scan:
+    runs-on: ubuntu-latest
+    env:
+      IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/react-cicd-app:${{ github.sha }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run tests
+        run: npm test -- --watchAll=false
+
+      - name: Build production bundle
+        run: npm run build
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Build Docker image
+        run: docker build -t $IMAGE .
+
+      - name: Security scan using Trivy
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.IMAGE }}
+          format: 'table'
+          severity: 'HIGH,CRITICAL'
+          exit-code: '1'
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Push image
+        run: docker push $IMAGE
+
+  deploy-to-ec2:
+    needs: build-test-scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup SSH key
+        uses: webfactory/ssh-agent@v0.8.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Deploy on EC2
+        env:
+          IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/react-cicd-app:${{ github.sha }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+
+        run: |
+          ssh -o StrictHostKeyChecking=no $SSH_USER@$SSH_HOST << EOF
+            docker pull $IMAGE
+            docker stop react-app || true
+            docker rm react-app || true
+            docker run -d -p 80:80 --name react-app $IMAGE
+          EOF
+
