@@ -1,17 +1,19 @@
-# Stage 1: Build the React app
-FROM node:18-alpine AS build
-
+# Stage 1 — Build React App
+FROM node:18-alpine3.20 AS builder
 WORKDIR /app
 COPY package*.json ./
+RUN apk udpate && apk upgrade && apk add --no-cache python3 make g++
 RUN npm install
 COPY . .
 RUN npm run build
 
-# Stage 2: Serve with Nginx
-FROM nginx:alpine
+# Stage 2 — Run with Nginx
 
-COPY --from=build /app/build /usr/share/nginx/html
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+FROM nginx:1.27-alpine3.20
+RUN apk update && apk upgrade
+
+COPY --from=builder /app/build /usr/share/nginx/html
 
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]
+
